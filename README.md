@@ -1,42 +1,35 @@
 # indonesian-english-linter
 
-**Catch the localization bugs that translation files don't: wrong text crossing the line between data and display.**
+A planned Android localization linter for text crossing data and display boundaries. The repository is English/Indonesian-first, but locale pairs are configurable. The primary engine will be Android Lint custom checks using UAST for Kotlin and Java.
 
-Translating strings is only half the job. Apps also break when an internal ID like `Cash` reaches the screen untranslated, when translated text gets saved into the database or a CSV export, or when a raw exception message is shown to the user. This linter traces those flows in Kotlin/Compose code and reports them before release. English and Indonesian come first; any locale pair can be configured.
-
-Part of [android-kit](https://github.com/fridaysundaymood/android-kit), a toolkit combining five tools for end-to-end Android development. Works on its own; no other kit tool required.
+Part of [android-kit](https://github.com/fridaysundaymood/android-kit), but usable independently through Gradle, a standalone CLI jar, or an MCP client; no particular agent or other kit tool is required.
 
 ## Status
 
-> **Planning stage: there is no code to install yet.** This repo holds the design in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). Star or watch it to follow progress. First milestone: resource checks: canonical IDs inside translations, missing keys, and mismatched format arguments across locales.
-
-## Who it's for
-
-- Android teams shipping in more than one language, especially English and Indonesian.
-- Apps that store stable identifiers (categories, payment types, statuses) and display them translated.
+**Planning stage: there is no code to install yet.** See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). The first milestone covers resource checks for canonical identifiers, missing keys, and incompatible format arguments.
 
 ## Planned rules
 
-| Rule | Catches |
+| Stable Android Lint ID | Detects |
 |---|---|
-| L1 `raw-id-display` | An internal identifier shown in UI without going through its translator |
-| L2 `id-in-translation` | A translation that contains an internal identifier instead of the translated word |
-| L3 `exception-to-ui` | An exception message shown directly to the user |
-| L4 `localized-exception-swallowed` | A translated error message that the error handler throws away |
-| L5 `missing-locale-key` | A string missing in a shipped language, or with incompatible format arguments |
-| L6 `localized-data-leak` | Translated text written to storage, sync, export, or used in ID comparisons |
+| `RawIdDisplay` | An internal identifier shown without its localizer |
+| `IdInTranslation` | A translation containing a canonical identifier where a localized term is required |
+| `ExceptionToUi` | A raw exception message shown to a user |
+| `LocalizedExceptionSwallowed` | A localized error message discarded by an error mapper |
+| `MissingLocaleKey` | A missing locale resource or incompatible format arguments |
+| `LocalizedDataLeak` | Localized text entering data storage, export, sync, or identifier comparisons |
 
 ## Planned integrations
 
-CLI, Gradle task with a baseline (fail only on new findings), SARIF and Markdown reports, and an MCP tool for AI agents. Configuration lives in a project `i18n-lint.yaml`.
+A Kotlin/JVM library, Maven/Gradle plugin and standalone CLI jar will provide Android Lint checks, baseline, SARIF and Markdown reports. A thin stdio MCP adapter will expose `i18n_lint` and `i18n_doctor`; all operations will also be available through CLI commands with `--json`. Configuration uses the `i18n` section of `android-kit.yaml`, or a standalone `i18n-lint.yaml` with the same schema when not using the kit.
 
 ## Out of scope
 
-Machine translation and layout/overflow checks.
+Machine translation, layout/overflow checks, and a detekt implementation.
 
 ## Contributing
 
-The design is open for feedback. Open an issue to question scope, suggest a feature, or discuss an approach before sending a pull request. Use synthetic examples only: no private app code, production data, or credentials.
+The design is open for feedback. Use synthetic examples only: no private app code, production data, or credentials.
 
 ## License
 
