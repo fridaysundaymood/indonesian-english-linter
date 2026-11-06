@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Fixture</string>
+    <string name="payment">Cash</string>
+    <string name="missing">Missing translation</string>
+</resources>

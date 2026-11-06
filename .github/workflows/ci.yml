@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build and test
+        run: bash ./gradlew build
+        shell: bash
+
+  compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        agp: ['9.0.0', '9.5.0']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-36'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: bash ./gradlew --no-daemon publishToMavenLocal :cli:jar
+      - name: Gradle lint and report assertions
+        run: bash ./gradlew --no-daemon -p integration/compatibility -PagpVersion=${{ matrix.agp }} assembleDebug verifyLintReports
+      - name: Standalone CLI
+        shell: bash
+        run: |
+          set +e
+          java -jar cli/build/libs/i18n-lint.jar lint --path integration/compatibility --json > cli-result.json
+          code=$?
+          set -e
+          test "$code" -eq 1
+          python -c 'import json; r=json.load(open("cli-result.json")); assert r["status"] == "fail" and any(e.get("id") == "IdInTranslation" for e in r["evidence"])'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-compatibility-${{ matrix.agp }}
+          path: |
+            integration/compatibility/build/reports/
+            cli-result.json
+            .android-kit/runs/
+
+  shared-fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: linter
+      - uses: actions/checkout@v4
+        with:
+          repository: fridaysundaymood/kit-fixture-app
+          path: kit-fixture-app
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-36'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build custom checks
+        working-directory: linter
+        run: bash ./gradlew --no-daemon :lint-rules:jar
+      - name: Run fixture lint variants
+        working-directory: kit-fixture-app
+        env:
+          I18N_LINT_RULES_JAR: ${{ github.workspace }}/linter/lint-rules/build/libs/lint-rules-0.1.0-SNAPSHOT.jar
+          I18N_LINT_CONFIG: ${{ github.workspace }}/linter/integration/fixture.i18n-lint.yaml
+        run: bash ./gradlew --no-daemon --continue -I ../linter/integration/fixture.init.gradle :app:lintCleanDebug :app:lintDefectsDebug
+      - name: Assert clean and L1-L6 findings
+        if: always()
+        run: python linter/integration/assert_fixture_reports.py kit-fixture-app/app/build/reports
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shared-fixture-lint
+          path: kit-fixture-app/app/build/reports/
+
+  mcp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: linter
+      - uses: actions/checkout@v4
+        with:
+          repository: fridaysundaymood/android-kit
+          path: android-kit
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build shared schema
+        working-directory: android-kit
+        run: npm ci && npm run build --workspace packages/kit-schema
+      - name: Install and test MCP adapter
+        working-directory: linter/mcp
+        run: npm install && npm test

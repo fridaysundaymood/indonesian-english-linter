@@ -1,0 +1,5 @@
+domains:
+  paymentMethod:
+    values: [Cash]
+    localizer: localizedPaymentMethod
+locales: [values, values-in]

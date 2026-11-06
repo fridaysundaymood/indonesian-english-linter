@@ -1,36 +1,62 @@
-# indonesian-english-linter
+# Indonesian-English localization lint
 
-A planned Android localization linter for text crossing data and display boundaries. The repository is English/Indonesian-first, but locale pairs are configurable. The primary engine will be Android Lint custom checks using UAST for Kotlin and Java.
+Android Lint checks for localization at resource, display and data boundaries. Indonesian is the default target locale; the configured locale list is not restricted to English and Indonesian. The checks use Android Lint's issue IDs and suppression mechanisms. See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for intended scope and limitations.
 
-Part of [android-kit](https://github.com/fridaysundaymood/android-kit), but usable independently through Gradle, a standalone CLI jar, or an MCP client; no particular agent or other kit tool is required.
+## Build and prerequisites
 
-## Status
+Install JDK 21 and set `JAVA_HOME`. Install the Android SDK and set `ANDROID_HOME` or `ANDROID_SDK_ROOT` to its directory; integration fixtures use Android SDK Platform 36. The build pins Gradle 9.7.1, Kotlin 2.4.21, and Android Lint 32.5.0; the Android Gradle Plugin belongs to the consuming app. On macOS/Linux, make the wrapper executable with `chmod +x gradlew` and run `./gradlew build`; on Windows run `gradlew.bat build` in Command Prompt or `./gradlew.bat build` in PowerShell. Quote paths containing spaces. No compatibility combination is yet claimed as verified: CI targets AGP 9.0 and 9.5, using AGP's built-in Kotlin support, and exercises the shared fixture separately on AGP 9.5.
 
-**Planning stage: there is no code to install yet.** See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). The first milestone covers resource checks for canonical identifiers, missing keys, and incompatible format arguments.
+## Gradle integration
 
-## Planned rules
+Build and publish locally with `./gradlew publishToMavenLocal` (use `gradlew.bat` on Windows). In the consuming project's plugin management and dependency repositories include `mavenLocal()`, `google()` and `mavenCentral()`. Apply `id("dev.androidkit.i18n-lint") version "0.1.0-SNAPSHOT"` to an Android application, library, test or dynamic-feature module. The plugin adds the same-version `dev.androidkit.i18n:lint-rules` artifact to `lintChecks`; invoke the app's normal lint task. Configure severity, baseline, SARIF and suppressions through Android Lint. This repository does not publish an external release automatically.
 
-| Stable Android Lint ID | Detects |
+## CLI
+
+After `./gradlew :cli:jar`, run:
+
+```sh
+java -jar cli/build/libs/i18n-lint.jar doctor --json
+java -jar cli/build/libs/i18n-lint.jar lint --path /path/to/android-project --json
+```
+
+Use a quoted Windows path such as `--path "C:\\work\\my app"`. The CLI requires the SDK and project metadata; individual source files are not supported inputs. `--config FILE` selects the configuration explicitly, `--path DIRECTORY` may be repeated, and `--rules` takes comma-separated issue IDs. `--report markdown` and `--report sarif` select artifacts (both are default); `--baseline FILE`, `--baseline-create FILE`, and `--baseline-update FILE` are mutually exclusive. Reports are stored beneath `.android-kit/runs/<run-id>/i18n/`. JSON goes to stdout and diagnostics to stderr. Exit codes are 0 for pass, 1 for findings, and 2 for blocked, unsupported or error. Unsupported analysis must not be interpreted as a clean result.
+
+## Configuration
+
+Use either `i18n-lint.yaml` containing the section value below, or an `i18n` section in `android-kit.yaml`. If both exist, pass `--config` to the CLI or set `I18N_LINT_CONFIG` for Gradle; do not merge them.
+The section schema is [schema/i18n.v1.json](schema/i18n.v1.json).
+
+
+```yaml
+domains:
+  paymentMethod:
+    values: [Cash, Card]
+    localizer: localizedPaymentMethod
+ui_sinks: [Text, contentDescription]
+data_sinks: [JSONObject.put, exportCsv]
+user_facing_exceptions: [UserFacingException]
+locales: [values, values-in]
+```
+
+## Rules
+
+All six default to warning. Suppress by issue ID using Android Lint's supported `@Suppress`, `@SuppressLint`, `//noinspection`, or XML `tools:ignore` scope.
+
+| ID | Signal and remediation |
 |---|---|
-| `RawIdDisplay` | An internal identifier shown without its localizer |
-| `IdInTranslation` | A translation containing a canonical identifier where a localized term is required |
-| `ExceptionToUi` | A raw exception message shown to a user |
-| `LocalizedExceptionSwallowed` | A localized error message discarded by an error mapper |
-| `MissingLocaleKey` | A missing locale resource or incompatible format arguments |
-| `LocalizedDataLeak` | Localized text entering data storage, export, sync, or identifier comparisons |
+| `RawIdDisplay` | A canonical identifier reaches a display sink; pass it through the configured localizer. |
+| `IdInTranslation` | A translated resource contains a configured canonical identifier; use its translated label. |
+| `ExceptionToUi` | A technical exception reaches UI text; map it to a localized message or a declared user-facing exception. |
+| `LocalizedExceptionSwallowed` | A localized exception message is discarded by an error mapper; preserve the approved message. |
+| `MissingLocaleKey` | A shipped locale lacks a default resource or has incompatible format arguments; add or correct the resource. |
+| `LocalizedDataLeak` | Localized output reaches a configured data sink; persist or transmit the canonical identifier. |
 
-## Planned integrations
+These checks are static analysis, not whole-program verification; review findings and use targeted suppressions where needed. Machine translation and layout/overflow checks are out of scope.
 
-A Kotlin/JVM library, Maven/Gradle plugin and standalone CLI jar will provide Android Lint checks, baseline, SARIF and Markdown reports. A thin stdio MCP adapter will expose `i18n_lint` and `i18n_doctor`; all operations will also be available through CLI commands with `--json`. Configuration uses the `i18n` section of `android-kit.yaml`, or a standalone `i18n-lint.yaml` with the same schema when not using the kit.
+## MCP and agent guidance
 
-## Out of scope
+The optional stdio adapter is in `mcp/` and exposes `i18n_lint` and `i18n_doctor`, delegating to the CLI. It currently requires Node.js 24 or newer, the `android-kit` repository as a sibling and its `packages/kit-schema` package built before installing the adapter dependencies. See [SKILL.md](SKILL.md) for CLI/MCP workflows. Plain CI does not require an agent or MCP.
 
-Machine translation, layout/overflow checks, and a detekt implementation.
+## Contributing and security
 
-## Contributing
-
-The design is open for feedback. Use synthetic examples only: no private app code, production data, or credentials.
-
-## License
-
-[MIT](LICENSE)
+Use synthetic fixtures only; do not commit private app code, credentials or production data. Report security issues privately to the repository maintainers. Licensed under [MIT](LICENSE).

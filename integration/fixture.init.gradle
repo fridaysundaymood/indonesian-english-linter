@@ -1,0 +1,11 @@
+gradle.beforeProject { project ->
+    project.pluginManager.withPlugin('com.android.application') {
+        def jarPath = System.getenv('I18N_LINT_RULES_JAR')
+        if (!jarPath) throw new GradleException('Set I18N_LINT_RULES_JAR to the custom checks jar')
+        def jar = project.rootProject.file(jarPath)
+        if (!jar.isFile()) throw new GradleException("Custom checks jar not found: $jar")
+        project.dependencies.add('lintChecks', project.files(jar))
+        project.extensions.getByName('android').lint.abortOnError = false
+        project.extensions.getByName('android').lint.xmlReport = true
+    }
+}

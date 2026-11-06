@@ -1,0 +1,11 @@
+domains:
+  TaskStatus:
+    values: [todo, doing, done]
+    localizer: localized
+  Priority:
+    values: [low, high]
+    localizer: localized
+ui_sinks: [Text, showSnackbar]
+data_sinks: [sync, put]
+user_facing_exceptions: [UserFacingException]
+locales: [values, values-in]
