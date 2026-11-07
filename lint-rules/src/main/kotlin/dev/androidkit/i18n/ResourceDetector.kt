@@ -42,18 +42,25 @@ class ResourceDetector : Detector(), Detector.XmlScanner {
         configuration = null
     }
 
-    private fun formats(element: Element): Map<String, Int> {
-        val result = mutableMapOf<String, Int>()
-        var next = 1
-        val pattern = Regex("%(?:(\\d+)\\$)?[-#+ 0,(<]*\\d*(?:\\.\\d+)?([a-zA-Z%])")
-        for (match in pattern.findAll(element.textContent)) {
-            val type = match.groupValues[2].lowercase()
-            if (type == "%" || type == "n") continue
-            val index = match.groupValues[1].toIntOrNull() ?: next++
-            val family = when (type) { "d", "o", "x" -> "integer"; "e", "f", "g", "a" -> "float"; else -> type }
-            val key = "$index:$family"
-            result[key] = (result[key] ?: 0) + 1
+    private fun formats(element: Element): Set<Set<String>> {
+        val items = if (element.tagName == "plurals") {
+            val children = element.getElementsByTagName("item")
+            (0 until children.length).map { children.item(it).textContent }
+        } else {
+            listOf(element.textContent)
         }
-        return result
+        return items.map { text ->
+            val result = mutableSetOf<String>()
+            var next = 1
+            val pattern = Regex("%(?:(\\d+)\\$)?[-#+ 0,(<]*\\d*(?:\\.\\d+)?([a-zA-Z%])")
+            for (match in pattern.findAll(text)) {
+                val type = match.groupValues[2].lowercase()
+                if (type == "%" || type == "n") continue
+                val index = match.groupValues[1].toIntOrNull() ?: next++
+                val family = when (type) { "d", "o", "x" -> "integer"; "e", "f", "g", "a" -> "float"; else -> type }
+                result.add("$index:$family")
+            }
+            result
+        }.toSet()
     }
 }

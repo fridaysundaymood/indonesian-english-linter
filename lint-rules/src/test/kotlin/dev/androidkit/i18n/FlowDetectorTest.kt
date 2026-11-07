@@ -125,4 +125,54 @@ class FlowDetectorTest {
             """)
         ).allowMissingSdk().run().expectWarningCount(2)
     }
+    @Test fun resourceDisplayAndUnknownValuesAreSafe() {
+        lint().issues(RAW_ID, DATA_LEAK).files(config, java("""
+            package android.content;
+            public class Context {
+                public String getString(int id, Object... args) { return ""; }
+            }
+        """), java("""
+            package android.content.res;
+            public class Resources {
+                public String getQuantityString(int id, int quantity, Object... args) { return ""; }
+            }
+        """), kotlin("""
+            import android.content.Context
+            import android.content.res.Resources
+            enum class Status { todo; fun localized(): String = name }
+            enum class SnackbarResult { ActionPerformed, Dismissed }
+            fun Text(value: Any) {}
+            fun stringResource(id: Int, vararg args: Any): String = ""
+            class Preferences { fun getString(key: String, fallback: String?): String? = fallback }
+            fun encode(value: String?) {}
+            fun showSnackbar(message: String): SnackbarResult = SnackbarResult.Dismissed
+            fun screen(status: Status, text: String, count: Int, context: Context, resources: Resources, preferences: Preferences) {
+                Text(text)
+                Text(count)
+                Text(stringResource(1, status.name))
+                Text(context.getString(1, status.name))
+                Text(resources.getQuantityString(1, count, status.name))
+                encode(preferences.getString("refresh_token", null))
+                encode(context.getString(1))
+                if (showSnackbar(stringResource(1)) == SnackbarResult.ActionPerformed) Text(text)
+                if (status.localized() == text) Text(text)
+            }
+        """)).allowMissingSdk().run().expectWarningCount(1)
+    }
+
+    @Test fun domainDisplayAndLocalizedDataPathsAreReported() {
+        lint().issues(RAW_ID, DATA_LEAK).files(config, kotlin("""
+            enum class Status { todo; fun localized(): String = name }
+            fun Text(value: String) {}
+            fun encode(value: String) {}
+            fun stringResource(id: Int): String = ""
+            fun screen(status: Status) {
+                Text(status.name)
+                encode(status.localized())
+                encode(stringResource(1))
+                if (status.localized() == status.name) Text("match")
+            }
+        """)).allowMissingSdk().run().expectWarningCount(4)
+    }
+
 }

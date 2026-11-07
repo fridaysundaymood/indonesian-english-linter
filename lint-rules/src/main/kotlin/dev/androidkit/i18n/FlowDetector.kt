@@ -23,6 +23,16 @@ class FlowDetector : Detector(), Detector.UastScanner {
         val config = Configuration.load(context.project.dir)
         val localizers = config.domains.values.map { it.localizer }.toSet()
         fun matches(name: String, configured: Set<String>) = configured.any { it == name || it.substringAfterLast('.') == name }
+        fun resourceLocalizer(call: UCallExpression): Boolean {
+            if (call.methodName == "stringResource") return true
+            if (call.methodName !in setOf("getString", "getQuantityString")) return false
+            fun resourceOwner(owner: com.intellij.psi.PsiClass?): Boolean {
+                if (owner == null) return false
+                if (owner.qualifiedName in setOf("android.content.Context", "android.content.res.Resources", "androidx.fragment.app.Fragment")) return true
+                return owner.supers.any { resourceOwner(it) }
+            }
+            return resourceOwner(call.resolve()?.containingClass)
+        }
         fun annotation(owner: PsiModifierListOwner?, name: String) = owner?.modifierList?.annotations?.any { it.qualifiedName?.substringAfterLast('.') == name } == true
         fun sourceBody(call: UCallExpression): UExpression? {
             val resolved = call.resolve()
@@ -45,7 +55,7 @@ class FlowDetector : Detector(), Detector.UastScanner {
                         if (kind == "raw" && node is UBinaryExpression && (node.operator == UastBinaryOperator.EQUALS || node.operator == UastBinaryOperator.NOT_EQUALS)) return true
                         if (node is UQualifiedReferenceExpression && kind == "raw") {
                             val call = node.selector as? UCallExpression
-                            if (call != null && (matches(call.methodName.orEmpty(), localizers) || annotation(call.resolve(), "DisplayText"))) return true
+                            if (call != null && (resourceLocalizer(call) || matches(call.methodName.orEmpty(), localizers) || annotation(call.resolve(), "DisplayText"))) return true
                         }
                         if (node is UCallExpression) {
                             val name = node.methodName.orEmpty()
@@ -54,10 +64,14 @@ class FlowDetector : Detector(), Detector.UastScanner {
                                 val type = node.receiver?.getExpressionType()?.canonicalText.orEmpty()
                                 if ((type.endsWith("Exception") || type.endsWith("Throwable") || type.endsWith("Error")) && config.userExceptions.none { type == it || type.endsWith(".$it") }) { found = true; return true }
                             }
-                            val isLocal = matches(name, localizers) || annotation(method, "DisplayText")
+                            val isLocal = resourceLocalizer(node) || matches(name, localizers) || annotation(method, "DisplayText")
                             if (kind == "localized" && isLocal) { found = true; return true }
                             if (kind == "raw" && isLocal) return true
                             if (kind == "raw" && annotation(method, "IdentifierDomain")) { found = true; return true }
+                            if (kind == "localized") {
+                                val type = node.getExpressionType()?.canonicalText
+                                if (type != null && type !in setOf("java.lang.String", "kotlin.String", "java.lang.CharSequence", "kotlin.CharSequence")) return true
+                            }
                             if (depth == 0 && (method == null || seen.add(method))) {
                                 val body = sourceBody(node)
                                 if (body != null) {
@@ -171,7 +185,11 @@ class FlowDetector : Detector(), Detector.UastScanner {
                     if (flow(value, "raw")) context.report(RAW_ID, value, context.getLocation(value), "Localize this identifier before displaying it.")
                     if (flow(value, "exception")) context.report(EXCEPTION_UI, value, context.getLocation(value), "Do not show a technical exception message to users.")
                 }
-                if ((node.operator == UastBinaryOperator.EQUALS || node.operator == UastBinaryOperator.NOT_EQUALS) && (flow(node.leftOperand, "localized") || flow(node.rightOperand, "localized"))) context.report(DATA_LEAK, node, context.getLocation(node), "Compare canonical identifiers rather than localized labels.")
+                if ((node.operator == UastBinaryOperator.EQUALS || node.operator == UastBinaryOperator.NOT_EQUALS) &&
+                    ((flow(node.leftOperand, "localized") && flow(node.rightOperand, "raw")) ||
+                        (flow(node.rightOperand, "localized") && flow(node.leftOperand, "raw")))) {
+                    context.report(DATA_LEAK, node, context.getLocation(node), "Compare canonical identifiers rather than localized labels.")
+                }
             }
         }
     }
