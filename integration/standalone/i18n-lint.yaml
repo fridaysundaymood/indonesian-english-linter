@@ -1,0 +1,5 @@
+domains:
+  status:
+    values: [todo]
+    localizer: localizedStatus
+locales: [values, values-in]

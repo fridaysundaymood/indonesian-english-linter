@@ -11,6 +11,7 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.time.Instant
+import java.util.Properties
 import java.util.UUID
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
@@ -18,7 +19,7 @@ import kotlin.system.exitProcess
 
 private val ruleIds = setOf("RawIdDisplay", "IdInTranslation", "ExceptionToUi", "LocalizedExceptionSwallowed", "MissingLocaleKey", "LocalizedDataLeak")
 private val json = Json { prettyPrint = true }
-private data class Finding(val id: String, val severity: String, val message: String, val file: String, val line: Int, val snippet: String, val fix: String)
+internal data class Finding(val id: String, val severity: String, val message: String, val file: String, val line: Int, val snippet: String, val fix: String)
 private data class Result(val status: String, val summary: String, val classification: String? = null, val evidence: List<JsonElement> = emptyList(), val artifacts: List<String> = emptyList())
 private class Usage(message: String) : Exception(message)
 
@@ -73,10 +74,10 @@ private fun parse(args: List<String>): Map<String, List<String>> {
 
 private fun doctor(options: Map<String, List<String>>): Result {
     if (options.keys.any { it != "--json" }) throw Usage("doctor accepts only --json")
-    val sdk = System.getenv("ANDROID_SDK_ROOT") ?: System.getenv("ANDROID_HOME")
+    val sdk = findAndroidSdk(File(".").canonicalFile, System.getenv())
     val checks = listOf(
         Triple("java", Runtime.version().feature() >= 17, "Install JDK 17 or newer and set JAVA_HOME."),
-        Triple("android_sdk", sdk != null && File(sdk).isDirectory, "Install the Android SDK and set ANDROID_SDK_ROOT."),
+        Triple("android_sdk", sdk != null, "Install the Android SDK and set ANDROID_SDK_ROOT or sdk.dir in local.properties."),
         Triple("gradle", commandExists(if (System.getProperty("os.name").startsWith("Windows")) "gradle.bat" else "gradle") || File("gradlew").isFile || File("gradlew.bat").isFile, "Install Gradle or use the project's Gradle wrapper."),
         Triple("lint", runCatching { Class.forName("com.android.tools.lint.Main") }.isSuccess, "Reinstall the CLI with Android Lint 32.5 dependencies.")
     )
@@ -87,6 +88,16 @@ private fun doctor(options: Map<String, List<String>>): Result {
 }
 
 private fun commandExists(name: String): Boolean = (System.getenv("PATH") ?: "").split(File.pathSeparator).any { File(it, name).isFile }
+
+internal fun findAndroidSdk(root: File, environment: Map<String, String>): File? {
+    val properties = Properties()
+    val localProperties = File(root, "local.properties")
+    if (localProperties.isFile) localProperties.inputStream().use { properties.load(it) }
+    return sequenceOf(environment["ANDROID_SDK_ROOT"], environment["ANDROID_HOME"], properties.getProperty("sdk.dir"))
+        .filterNotNull().filter { it.isNotBlank() }
+        .map { File(it).let { path -> if (path.isAbsolute) path else File(root, it) } }
+        .firstOrNull { it.isDirectory }
+}
 
 private fun lint(options: Map<String, List<String>>, runId: String): Result {
     val cwd = File(".").canonicalFile
@@ -110,18 +121,21 @@ private fun lint(options: Map<String, List<String>>, runId: String): Result {
     if (baselineOptions.singleOrNull() == "--baseline" && baseline?.isFile != true) throw Usage("Baseline does not exist")
     if (baselineOptions.singleOrNull() == "--baseline-create" && baseline?.exists() == true) throw Usage("Baseline already exists")
     if (baselineOptions.singleOrNull() == "--baseline-update" && baseline?.isFile != true) throw Usage("Baseline to update does not exist")
-    val sdk = System.getenv("ANDROID_SDK_ROOT") ?: System.getenv("ANDROID_HOME")
-    if (sdk == null || !File(sdk).isDirectory) return Result("blocked", "Android SDK unavailable; set ANDROID_SDK_ROOT or ANDROID_HOME.", "environment")
+    val sdk = findAndroidSdk(root, System.getenv())
+    if (sdk == null) return Result("blocked", "Android SDK unavailable; set ANDROID_SDK_ROOT, ANDROID_HOME, or sdk.dir in local.properties.", "environment")
     if (paths.any { !File(it, "AndroidManifest.xml").isFile && !File(it, "src/main/AndroidManifest.xml").isFile && !File(it, "settings.gradle").isFile && !File(it, "settings.gradle.kts").isFile })
         return Result("unsupported", "Android project metadata is missing; provide project directories containing a manifest or Gradle settings.", "environment")
     val relativeDir = ".android-kit/runs/$runId/i18n"
-    val dir = File(cwd, relativeDir).also { it.mkdirs() }
+    val dir = File(root, relativeDir).also { it.mkdirs() }
     val xml = File(dir, "lint.xml")
     val sarif = File(dir, "lint.sarif")
     val baselineAction = baselineOptions.singleOrNull()
     val baselineInput = if (baselineAction == "--baseline") baseline else if (baseline != null) File(dir, "new-baseline.xml") else null
-    val rulesJar = runCatching { File(Class.forName("dev.androidkit.i18n.I18nIssueRegistry").protectionDomain.codeSource.location.toURI()) }.getOrNull()
-    if (rulesJar == null || !rulesJar.isFile) return Result("unsupported", "Custom lint rules jar is unavailable; run the packaged CLI distribution.", "environment")
+    val rulesStream = object {}.javaClass.getResourceAsStream("/indonesian-english-lint-checks.jar")
+        ?: return Result("unsupported", "Custom lint rules jar is unavailable; run the packaged CLI distribution.", "environment")
+    val rulesJar = Files.createTempFile("i18n-lint-checks-", ".jar").toFile()
+    try {
+        rulesStream.use { input -> rulesJar.outputStream().use { input.copyTo(it) } }
     val gradleProject = File(root, "settings.gradle").isFile || File(root, "settings.gradle.kts").isFile ||
         File(root, "build.gradle").isFile || File(root, "build.gradle.kts").isFile
     val command = if (gradleProject) {
@@ -162,13 +176,16 @@ private fun lint(options: Map<String, List<String>>, runId: String): Result {
         }
     } else {
         val java = File(System.getProperty("java.home"), "bin/${if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java"}")
-        mutableListOf(java.path, "-cp", System.getProperty("java.class.path"), "com.android.tools.lint.Main", "--check", selected.sorted().joinToString(","), "--xml", xml.absolutePath, "--exitcode").apply {
+        val classpath = System.getProperty("java.class.path").split(File.pathSeparator).joinToString(File.pathSeparator) { File(it).absolutePath }
+        mutableListOf(java.path, "-cp", classpath, "com.android.tools.lint.Main", "--check", selected.sorted().joinToString(","), "--xml", xml.absolutePath, "--exitcode").apply {
             if ("sarif" in reports) addAll(listOf("--sarif", sarif.absolutePath))
             if (baselineInput != null) addAll(listOf("--baseline", baselineInput.absolutePath))
             addAll(paths.map { it.absolutePath })
         }
     }
-    val builder = ProcessBuilder(command).directory(cwd).redirectErrorStream(true)
+    val builder = ProcessBuilder(command).directory(root).redirectErrorStream(true)
+    builder.environment()["ANDROID_HOME"] = sdk.absolutePath
+    builder.environment()["ANDROID_SDK_ROOT"] = sdk.absolutePath
     config?.let { builder.environment()["I18N_LINT_CONFIG"] = it.absolutePath }
     if (!gradleProject) builder.environment()["LINT_JARS"] = rulesJar.absolutePath
     val process = builder.start()
@@ -179,7 +196,7 @@ private fun lint(options: Map<String, List<String>>, runId: String): Result {
     }
     if (baselineAction != null && baselineAction != "--baseline" && baselineInput?.isFile != true) return Result("unsupported", "Android Lint did not create the requested baseline; inspect stderr.", "environment")
     if (!xml.isFile) return Result("unsupported", "Android Lint did not produce a report (exit $code); check SDK, project metadata, and lint compatibility.", "environment")
-    val allFindings = readFindings(xml, cwd)
+    val allFindings = readFindings(xml, root)
     if (allFindings.any { it.id !in ruleIds }) return Result("unsupported", "Android Lint reported an analysis or configuration issue: ${allFindings.first { it.id !in ruleIds }.message}", "environment")
     val findings = allFindings.filter { it.id in selected }
     val evidence = findings.map { f -> buildJsonObject { put("id", f.id); put("severity", f.severity); put("file", f.file); put("line", f.line); put("message", f.message); put("snippet", f.snippet); put("suggested_fix", f.fix) } }
@@ -195,6 +212,9 @@ private fun lint(options: Map<String, List<String>>, runId: String): Result {
     if ("sarif" in reports && !sarif.isFile) return Result("unsupported", "Android Lint did not produce the requested SARIF report.", "environment", evidence, artifacts)
     if (code != 0 && findings.isEmpty()) return Result("unsupported", "Android Lint exited $code without actionable findings; inspect stderr.", "environment", evidence, artifacts)
     return Result(if (findings.isEmpty()) "pass" else "fail", "${findings.size} finding(s)", if (findings.isEmpty()) null else "app", evidence, artifacts)
+    } finally {
+        rulesJar.delete()
+    }
 }
 
 internal fun validateConfig(file: File) {
@@ -208,7 +228,7 @@ internal fun validateConfig(file: File) {
     if (errors.isNotEmpty()) throw Usage("Invalid i18n configuration: ${errors.joinToString("; ")}")
 }
 
-private fun readFindings(file: File, cwd: File): List<Finding> {
+internal fun readFindings(file: File, root: File): List<Finding> {
     val factory = DocumentBuilderFactory.newInstance()
     factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
     factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
@@ -218,9 +238,10 @@ private fun readFindings(file: File, cwd: File): List<Finding> {
         val issue = nodes.item(index) as org.w3c.dom.Element
         val location = issue.getElementsByTagName("location").item(0) as? org.w3c.dom.Element
         val filename = location?.getAttribute("file") ?: ""
-        val path = runCatching { cwd.toPath().relativize(File(filename).canonicalFile.toPath()).toString() }.getOrDefault(filename)
+        val source = File(filename).let { if (it.isAbsolute) it else File(root, filename) }
+        val path = runCatching { root.toPath().relativize(source.canonicalFile.toPath()).toString() }.getOrDefault(filename)
         val line = location?.getAttribute("line")?.toIntOrNull() ?: 0
-        val snippet = if (filename.isNotEmpty() && line > 0) runCatching { File(filename).useLines { it.drop(line - 1).firstOrNull().orEmpty() } }.getOrDefault("") else ""
+        val snippet = if (filename.isNotEmpty() && line > 0) runCatching { source.useLines { it.drop(line - 1).firstOrNull().orEmpty() } }.getOrDefault("") else ""
         Finding(issue.getAttribute("id"), issue.getAttribute("severity"), issue.getAttribute("message"), path, line, snippet, issue.getAttribute("explanation"))
     }
 }

@@ -49,6 +49,9 @@ jobs:
           set -e
           test "$code" -eq 1
           python -c 'import json; r=json.load(open("cli-result.json")); assert r["status"] == "fail" and any(e.get("id") == "IdInTranslation" for e in r["evidence"])'
+      - name: Standalone CLI without Gradle plugin
+        if: matrix.agp == '9.0.0'
+        run: python integration/test_standalone_cli.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

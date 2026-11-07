@@ -1,0 +1,5 @@
+<resources>
+    <string name="title">Fixture</string>
+    <string name="status">To do</string>
+    <string name="missing">Missing</string>
+</resources>

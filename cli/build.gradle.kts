@@ -9,8 +9,13 @@ application {
     applicationName = "i18n-lint"
 }
 
+val lintChecks by configurations.creating {
+    isTransitive = false
+}
+
 dependencies {
     implementation(project(":lint-rules"))
+    add(lintChecks.name, project(":lint-rules"))
     implementation("com.android.tools.lint:lint:32.5.0")
     implementation("org.yaml:snakeyaml:2.3")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
@@ -23,16 +28,22 @@ dependencies {
 
 tasks.processResources {
     from(rootProject.file("schema/i18n.v1.json"))
+    from(lintChecks) {
+        rename { "indonesian-english-lint-checks.jar" }
+    }
 }
 
-tasks.test { useJUnitPlatform() }
+tasks.test {
+    useJUnitPlatform()
+    dependsOn(tasks.jar)
+    systemProperty("cliJar", tasks.jar.flatMap { it.archiveFile }.get().asFile.absolutePath)
+}
 
 tasks.jar {
     isZip64 = true
     archiveFileName.set("i18n-lint.jar")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest { attributes["Main-Class"] = application.mainClass.get() }
-    manifest { attributes["Lint-Registry-v2"] = "dev.androidkit.i18n.I18nIssueRegistry" }
     from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
     exclude("META-INF/*.SF", "META-INF/*.RSA", "META-INF/*.DSA")
 }
