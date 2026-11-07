@@ -175,4 +175,64 @@ class FlowDetectorTest {
         """)).allowMissingSdk().run().expectWarningCount(4)
     }
 
+    @Test fun formattingTemplatesAndWhenConditionsAreNotIdentifiers() {
+        lint().issues(RAW_ID).files(config, kotlin("""
+            enum class Status { todo, done }
+            fun Text(value: String) {}
+            fun screen(count: Int, date: Long, code: String) {
+                Text(count.toString())
+                Text("%02d".format(count))
+                Text("$" + count)
+                Text("date: $" + date)
+                Text(when (code) { "todo" -> "To do"; "done" -> "Done"; else -> "Other" })
+                Text(if (code == "todo") "To do" else "Other")
+            }
+        """)).allowMissingSdk().run().expectClean()
+    }
+
+    @Test fun declaredValuesTypesAndAliasesAreReported() {
+        lint().issues(RAW_ID).files(config, kotlin("""
+            enum class Status { todo, done }
+            fun Text(value: String) {}
+            fun screen(status: Status) {
+                val alias = status.name
+                Text(alias)
+                Text("todo")
+                Text(status.name)
+            }
+        """)).allowMissingSdk().run().expectWarningCount(3)
+    }
+
+    @Test fun valuesFromRequiresAnExactElement() {
+        val sourcedConfig = source("i18n-lint.yaml", """
+            domains:
+              Status:
+                values_from: Choices.kt:statuses
+                localizer: localized
+            ui_sinks: [Text]
+        """.trimIndent())
+        lint().issues(RAW_ID).files(sourcedConfig, kotlin("src/Choices.kt", """
+            val statuses = listOf("todo", "done")
+            fun Text(value: String) {}
+            fun screen(count: Int, statusesCount: Int) {
+                Text(statuses[0])
+                Text(count.toString())
+                Text(statusesCount.toString())
+            }
+        """)).allowMissingSdk().run().expectWarningCount(1)
+    }
+
+    @Test fun identifierAnnotationAndLocalizerBoundary() {
+        lint().issues(RAW_ID).files(config, kotlin("""
+            annotation class IdentifierDomain
+            @IdentifierDomain fun identifier(): String = "opaque"
+            fun localized(value: String): String = value
+            fun Text(value: String) {}
+            fun screen() {
+                Text(identifier())
+                Text(localized(identifier()))
+            }
+        """)).allowMissingSdk().run().expectWarningCount(1)
+    }
+
 }

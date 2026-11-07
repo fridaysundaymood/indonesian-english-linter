@@ -199,7 +199,7 @@ private fun lint(options: Map<String, List<String>>, runId: String): Result {
     val allFindings = readFindings(xml, root)
     if (allFindings.any { it.id !in ruleIds }) return Result("unsupported", "Android Lint reported an analysis or configuration issue: ${allFindings.first { it.id !in ruleIds }.message}", "environment")
     val findings = allFindings.filter { it.id in selected }
-    val evidence = findings.map { f -> buildJsonObject { put("id", f.id); put("severity", f.severity); put("file", f.file); put("line", f.line); put("message", f.message); put("snippet", f.snippet); put("suggested_fix", f.fix) } }
+    val evidence = findings.map(::findingEvidence)
     val artifacts = mutableListOf("$relativeDir/lint.xml")
     if ("markdown" in reports) {
         val text = buildString { append("# Localization lint\n\n"); if (findings.isEmpty()) append("No findings.\n") else findings.forEach { append("- **${it.id}** (${it.severity}) `${it.file}:${it.line}`: ${it.message.replace("\n", " ")}\n") } }
@@ -214,6 +214,18 @@ private fun lint(options: Map<String, List<String>>, runId: String): Result {
     return Result(if (findings.isEmpty()) "pass" else "fail", "${findings.size} finding(s)", if (findings.isEmpty()) null else "app", evidence, artifacts)
     } finally {
         rulesJar.delete()
+    }
+}
+
+internal fun findingEvidence(f: Finding): JsonObject = buildJsonObject {
+    put("id", f.id); put("severity", f.severity); put("file", f.file); put("line", f.line)
+    put("message", f.message); put("snippet", f.snippet); put("suggested_fix", f.fix)
+    if (f.id == "RawIdDisplay") {
+        val match = Regex("^Localize identifier from domain (.+?) before displaying it\\. Provenance: (.+)\\.$").matchEntire(f.message)
+        if (match != null) {
+            put("domain", match.groupValues[1])
+            put("provenance", match.groupValues[2])
+        }
     }
 }
 

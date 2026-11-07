@@ -38,6 +38,8 @@ user_facing_exceptions: [UserFacingException]
 locales: [values, values-in]
 ```
 
+For `values_from`, use `path/to/Catalog.kt:declaration` to name the configured value source. `RawIdDisplay` uses declared domain values and domain-typed or `@IdentifierDomain` sources, rather than treating arbitrary strings as identifiers. Its finding message identifies the matched domain and provenance chain; CLI JSON evidence also exposes these as `domain` and `provenance` fields when present. Other findings retain their normal evidence fields.
+
 ## Rules
 
 All six default to warning. Suppress by issue ID using Android Lint's supported `@Suppress`, `@SuppressLint`, `//noinspection`, or XML `tools:ignore` scope.

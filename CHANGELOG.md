@@ -7,3 +7,4 @@
 - Export the i18n MCP tools, configuration schema, and doctor as a side-effect-free package API.
 - Isolate the CLI's injected lint checks, write run artifacts to the analyzed project, and discover the SDK from `local.properties`.
 - Reduce false positives in plural format checks and identifier and localized-data flow analysis.
+- Restrict raw identifier findings to declared domain provenance and expose the matched domain and provenance chain in CLI evidence.

@@ -7,6 +7,8 @@ import java.nio.file.Path
 import kotlin.io.path.writeText
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlinx.serialization.json.jsonPrimitive
+import kotlin.test.assertFalse
 
 class ProjectPathsTest {
     @TempDir lateinit var directory: Path
@@ -34,5 +36,17 @@ class ProjectPathsTest {
         assertEquals("second", finding.snippet)
         xml.writeText("""<issues><issue id="RawIdDisplay" severity="Warning" message="example"><location file="${source.toString().replace("\\", "/")}" line="2"/></issue></issues>""")
         assertEquals("Example.kt", readFindings(xml.toFile(), project.toFile()).single().file)
+    }
+    @Test fun `raw identifier evidence exposes domain and provenance from lint message`() {
+        val xml = directory.resolve("lint.xml")
+        xml.writeText("""<issues><issue id="RawIdDisplay" severity="Warning" message="Localize identifier from domain paymentMethod before displaying it. Provenance: value Cash -&gt; variable method."><location file="Example.kt" line="2"/></issue></issues>""")
+        val finding = readFindings(xml.toFile(), directory.toFile()).single()
+        val evidence = findingEvidence(finding)
+        assertEquals("paymentMethod", evidence.getValue("domain").jsonPrimitive.content)
+        assertEquals("value Cash -> variable method", evidence.getValue("provenance").jsonPrimitive.content)
+        assertEquals(finding.message, evidence.getValue("message").jsonPrimitive.content)
+
+        assertFalse(findingEvidence(finding.copy(message = "Unstructured message")).containsKey("domain"))
+        assertFalse(findingEvidence(finding.copy(id = "IdInTranslation")).containsKey("domain"))
     }
 }
