@@ -5,10 +5,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { validateResult, exitCodeFor } from '@android-kit/schema';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cliArgs } from '../src/index.js';
+import { cliArgs, toolDefinitions, configSection, configSectionSchema, supportedSchemaMajors } from '../dist/index.js';
 
 const jar = resolve(process.env.I18N_LINT_JAR ?? fileURLToPath(new URL('../../cli/build/libs/i18n-lint.jar', import.meta.url)));
-const server = fileURLToPath(new URL('../dist/index.js', import.meta.url));
+const server = fileURLToPath(new URL('../dist/bin.js', import.meta.url));
 const client = new Client({ name: 'parity-test', version: '1.0.0' });
 const transport = new StdioClientTransport({ command: process.execPath, args: [server], env: { ...process.env as Record<string, string>, I18N_LINT_JAR: jar } });
 
@@ -30,6 +30,24 @@ function comparable(result: Record<string, unknown>) {
 describe('CLI and MCP parity', () => {
   beforeAll(async () => { await client.connect(transport); }, 60000);
   afterAll(async () => { await client.close(); }, 60000);
+
+  it('exposes the same tools and configuration through the package API', async () => {
+    const listed = await client.listTools();
+    expect(listed.tools.map(tool => tool.name)).toEqual(toolDefinitions().map(tool => tool.name));
+    expect(configSection).toBe('i18n');
+    expect(configSectionSchema.title).toBe('Localization lint configuration v1');
+    expect(supportedSchemaMajors).toEqual([1]);
+  });
+
+  it('imports the package root without starting stdio', () => {
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', "import '@android-kit/i18n-mcp';"], {
+      cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8', timeout: 5000,
+    });
+    expect(child.error).toBeUndefined();
+    expect(child.status).toBe(0);
+    expect(child.stdout).toBe('');
+    expect(child.stderr).toBe('');
+  });
 
   it.each([
     { operation: 'doctor' as const, tool: 'i18n_doctor', options: {}, args: [] },

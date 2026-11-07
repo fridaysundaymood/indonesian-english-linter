@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "bin": { "i18n-mcp": "./dist/index.js" },
+  "bin": { "i18n-mcp": "./dist/bin.js" },
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "files": ["dist"],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').copyFileSync('../schema/i18n.v1.json', 'dist/i18n.v1.json')\"",
     "test": "npm run build && vitest run"
   },
   "dependencies": {

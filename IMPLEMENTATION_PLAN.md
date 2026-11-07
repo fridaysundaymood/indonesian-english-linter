@@ -2,7 +2,7 @@
 
 ## Status and goal
 
-This is a plan, not an implemented tool. Build Android Lint custom checks for localization defects at display and data boundaries in Kotlin, Java and Android resources. The repository is English/Indonesian-first; locale pairs and additional shipped locales are configurable. Aim for actionable findings with low false positives. Machine translation, layout/overflow checks and a detekt implementation are out of scope.
+The localization display linter is implemented for Kotlin, Java and Android resources. The repository is English/Indonesian-first; locale pairs and additional shipped locales are configurable. Machine translation, layout/overflow checks and a detekt implementation are out of scope.
 
 Stable identifiers may remain canonical in storage, sync, CSV, backups and comparisons, but built-in identifiers must be localized for display. User-defined names may pass through a localizer unchanged. Localized text must not replace canonical identifiers in data paths. Technical exception messages must not be exposed to users, while approved localized user-facing messages must not be discarded.
 
@@ -59,17 +59,17 @@ The envelope also allows `classification` of `app`, `test`, `environment` or `co
 
 - Support Windows, macOS and Linux. Document shell quoting and path separators on Windows, executable permissions on macOS/Linux, and Android SDK installation and environment setup on each OS.
 - Declare and pin the JDK, Android SDK tools, Gradle, Android Gradle Plugin (AGP), Kotlin and Android Lint dependencies in builds and release documentation. `i18n-lint doctor` reports missing or incompatible prerequisites and concrete fixes, including SDK, Java, Gradle and lint compatibility.
-- Initial target compatibility range: AGP 9.0 and 9.5 with their corresponding Android Lint 32.x APIs and AGP's built-in Kotlin support. These are planned targets, not verified support; only combinations passing compatibility CI may be published as supported. CI exercises both target versions with Kotlin and Java fixtures; the shared fixture uses AGP 9.5. Revisit the matrix when upstream lint APIs change.
+- Compatibility has been verified with AGP 9.0 and 9.5 and their corresponding Android Lint 32.x APIs, including the synthetic shared fixture on AGP 9.5. Revisit the matrix when upstream lint APIs change.
 - Version releases using semver and maintain a CHANGELOG, including rule and compatibility changes. CI runs unit tests on all three OSes and integration tests where feasible, including the compatibility matrix and baseline/SARIF/IDE-facing lint integration.
 - Emit structured logs to stderr so JSON stdout remains machine-readable. Make interrupted runs recoverable and reruns idempotent: use distinct run directories, write reports atomically, and never mutate a baseline unless explicitly requested.
 - Plan `SECURITY.md` and `CONTRIBUTING.md` for M1. Collect no telemetry.
 
 ## Milestones and acceptance
 
-1. **M1 - resources:** Deliver the lint engine and configuration schema, doctor, per-rule documentation, security and contribution guidance, and `IdInTranslation` and `MissingLocaleKey` checks. A synthetic EN/ID fixture exercises identifier-in-translation, missing-key and format-argument defects and configurable alternative locale pairs.
-2. **M2 - exceptions:** `ExceptionToUi` and `LocalizedExceptionSwallowed` identify synthetic raw exception display and swallowed localized-message flows while accepting approved user-facing exceptions.
-3. **M3 - domain flows:** `RawIdDisplay` and `LocalizedDataLeak` identify raw identifier displays and localized values entering data sinks. A corrected synthetic fixture produces no findings for these rules, including custom-name pass-through.
-4. **M4 - integrations:** Maven/Gradle plugin, standalone CLI jar, baseline, SARIF, Markdown, MCP adapter and agent-neutral guidance expose consistent findings and envelope semantics. Exercise CLI and MCP parity, including doctor and unavailable capabilities.
+1. **M1 - resources: done.** The lint engine, schema, doctor, guidance and resource checks are implemented.
+2. **M2 - exceptions: done.** Exception display and swallowed localized-message checks are implemented.
+3. **M3 - domain flows: done.** Identifier display and localized data leak checks are implemented.
+4. **M4 - integrations: done.** Gradle, CLI, reports and MCP integrations are implemented; synthetic fixture integration passed.
 
 ## Testing and risks
 

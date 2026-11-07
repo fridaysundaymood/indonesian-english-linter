@@ -1,15 +1,21 @@
-#!/usr/bin/env node
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { CallToolRequestSchema, ListToolsRequestSchema, McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { checkSchemaMajor, createResult, exitCodeFor, newRunId, validateResult, type Result } from '@android-kit/schema';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 
 checkSchemaMajor(1);
 
-const lintOptions = {
+export const configSection = 'i18n';
+export const supportedSchemaMajors = [1];
+export const configSectionSchema: Record<string, unknown> = JSON.parse(
+  readFileSync(new URL('./i18n.v1.json', import.meta.url), 'utf8'),
+);
+
+const lintSchema = z.object({
   config: z.string().optional().describe('Configuration file'),
   paths: z.array(z.string()).optional().describe('Project, source or resource paths'),
   rules: z.array(z.string()).optional().describe('Selected lint issue IDs'),
@@ -17,7 +23,7 @@ const lintOptions = {
   baseline_create: z.string().optional(),
   baseline_update: z.string().optional(),
   reports: z.array(z.enum(['markdown', 'sarif'])).optional(),
-};
+});
 type LintOptions = {
   config?: string; paths?: string[]; rules?: string[]; baseline?: string;
   baseline_create?: string; baseline_update?: string; reports?: ('markdown' | 'sarif')[];
@@ -60,19 +66,38 @@ export async function runCli(operation: 'lint' | 'doctor', options: LintOptions 
   }
 }
 
-export function createServer(): McpServer {
-  const server = new McpServer({ name: 'i18n-lint', version: '1.0.0' });
-  server.registerTool('i18n_lint', { description: 'Run localization lint checks', inputSchema: lintOptions }, async (options) => {
-    const result = await runCli('lint', options);
-    return { content: [{ type: 'text', text: JSON.stringify(result) }] };
-  });
-  server.registerTool('i18n_doctor', { description: 'Check localization lint prerequisites', inputSchema: {} }, async () => {
-    const result = await runCli('doctor');
+export async function doctor(): Promise<Result> {
+  return runCli('doctor');
+}
+
+export function toolDefinitions() {
+  return [
+    {
+      name: 'i18n_lint',
+      description: 'Run localization lint checks',
+      inputSchema: z.toJSONSchema(lintSchema),
+      handler: (input: unknown) => runCli('lint', lintSchema.parse(input)),
+    },
+    {
+      name: 'i18n_doctor',
+      description: 'Check localization lint prerequisites',
+      inputSchema: z.toJSONSchema(z.object({})),
+      handler: (_input: unknown) => doctor(),
+    },
+  ];
+}
+
+export function createServer(): Server {
+  const server = new Server({ name: 'i18n-lint', version: '1.0.0' }, { capabilities: { tools: {} } });
+  const tools = toolDefinitions();
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+  }));
+  server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
+    const tool = tools.find(candidate => candidate.name === params.name);
+    if (!tool) throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${params.name}`);
+    const result = await tool.handler(params.arguments ?? {});
     return { content: [{ type: 'text', text: JSON.stringify(result) }] };
   });
   return server;
-}
-
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  await createServer().connect(new StdioServerTransport());
 }
