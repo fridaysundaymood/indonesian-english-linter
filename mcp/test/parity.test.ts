@@ -39,6 +39,14 @@ describe('CLI and MCP parity', () => {
     expect(supportedSchemaMajors).toEqual([1]);
   });
 
+  it('passes projectRoot to both CLI operations', async () => {
+    const missing = resolve('nonexistent-i18n-project-root');
+    for (const tool of toolDefinitions({ projectRoot: missing })) {
+      expect((await tool.handler({})).status).toBe('error');
+      expect((await tool.handler({ projectRoot: missing })).status).toBe('error');
+    }
+  });
+
   it('imports the package root without starting stdio', () => {
     const child = spawnSync(process.execPath, ['--input-type=module', '-e', "import '@android-kit/i18n-mcp';"], {
       cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8', timeout: 5000,

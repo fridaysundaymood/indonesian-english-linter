@@ -16,6 +16,7 @@ export const configSectionSchema: Record<string, unknown> = JSON.parse(
 );
 
 const lintSchema = z.object({
+  projectRoot: z.string().optional().describe('Working directory for the CLI'),
   config: z.string().optional().describe('Configuration file'),
   paths: z.array(z.string()).optional().describe('Project, source or resource paths'),
   rules: z.array(z.string()).optional().describe('Selected lint issue IDs'),
@@ -24,7 +25,9 @@ const lintSchema = z.object({
   baseline_update: z.string().optional(),
   reports: z.array(z.enum(['markdown', 'sarif'])).optional(),
 });
+const doctorSchema = z.object({ projectRoot: z.string().optional().describe('Working directory for the CLI') });
 type LintOptions = {
+  projectRoot?: string;
   config?: string; paths?: string[]; rules?: string[]; baseline?: string;
   baseline_create?: string; baseline_update?: string; reports?: ('markdown' | 'sarif')[];
 };
@@ -47,7 +50,7 @@ export async function runCli(operation: 'lint' | 'doctor', options: LintOptions 
   const jar = process.env.I18N_LINT_JAR ?? fileURLToPath(new URL('../../cli/build/libs/i18n-lint.jar', import.meta.url));
   try {
     const { promise, resolve: accept, reject } = Promise.withResolvers<{stdout: string; stderr: string; code: number | null}>();
-    const child = spawn(process.env.JAVA ?? 'java', ['-jar', resolve(jar), ...cliArgs(operation, options)], { windowsHide: true });
+    const child = spawn(process.env.JAVA ?? 'java', ['-jar', resolve(jar), ...cliArgs(operation, options)], { windowsHide: true, cwd: options.projectRoot });
     let stdout = '', stderr = '';
     child.stdout.setEncoding('utf8').on('data', (chunk: string) => { stdout += chunk; });
     child.stderr.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
@@ -66,23 +69,23 @@ export async function runCli(operation: 'lint' | 'doctor', options: LintOptions 
   }
 }
 
-export async function doctor(): Promise<Result> {
-  return runCli('doctor');
+export async function doctor(options: { projectRoot?: string } = {}): Promise<Result> {
+  return runCli('doctor', options);
 }
 
-export function toolDefinitions() {
+export function toolDefinitions(options: { projectRoot?: string } = {}) {
   return [
     {
       name: 'i18n_lint',
       description: 'Run localization lint checks',
       inputSchema: z.toJSONSchema(lintSchema),
-      handler: (input: unknown) => runCli('lint', lintSchema.parse(input)),
+      handler: (input: unknown) => runCli('lint', { ...options, ...lintSchema.parse(input) }),
     },
     {
       name: 'i18n_doctor',
       description: 'Check localization lint prerequisites',
-      inputSchema: z.toJSONSchema(z.object({})),
-      handler: (_input: unknown) => doctor(),
+      inputSchema: z.toJSONSchema(doctorSchema),
+      handler: (input: unknown) => doctor({ ...options, ...doctorSchema.parse(input) }),
     },
   ];
 }
