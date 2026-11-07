@@ -251,7 +251,7 @@ internal fun readFindings(file: File, root: File): List<Finding> {
         val location = issue.getElementsByTagName("location").item(0) as? org.w3c.dom.Element
         val filename = location?.getAttribute("file") ?: ""
         val source = File(filename).let { if (it.isAbsolute) it else File(root, filename) }
-        val path = runCatching { root.toPath().relativize(source.canonicalFile.toPath()).toString() }.getOrDefault(filename)
+        val path = runCatching { root.canonicalFile.toPath().relativize(source.canonicalFile.toPath()).toString() }.getOrDefault(filename)
         val line = location?.getAttribute("line")?.toIntOrNull() ?: 0
         val snippet = if (filename.isNotEmpty() && line > 0) runCatching { source.useLines { it.drop(line - 1).firstOrNull().orEmpty() } }.getOrDefault("") else ""
         Finding(issue.getAttribute("id"), issue.getAttribute("severity"), issue.getAttribute("message"), path, line, snippet, issue.getAttribute("explanation"))

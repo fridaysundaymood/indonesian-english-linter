@@ -34,8 +34,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
-      - run: sdkmanager 'platforms;android-36'
+      - name: Install Android SDK packages
+        run: yes | sdkmanager --licenses >/dev/null; sdkmanager --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
       - run: bash ./gradlew --no-daemon publishToMavenLocal :cli:jar
       - name: Gradle lint and report assertions
@@ -71,12 +71,13 @@ jobs:
         with:
           repository: fridaysundaymood/kit-fixture-app
           path: kit-fixture-app
+          token: ${{ secrets.KIT_REPOS_TOKEN || github.token }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
-      - run: sdkmanager 'platforms;android-36'
+      - name: Install Android SDK packages
+        run: yes | sdkmanager --licenses >/dev/null; sdkmanager --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
       - name: Build custom checks
         working-directory: linter
@@ -106,6 +107,7 @@ jobs:
         with:
           repository: fridaysundaymood/android-kit
           path: android-kit
+          token: ${{ secrets.KIT_REPOS_TOKEN || github.token }}
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
