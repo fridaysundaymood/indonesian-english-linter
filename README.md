@@ -68,6 +68,21 @@ All six default to warning. Suppress by issue ID using Android Lint's supported 
 
 These checks are static analysis, not whole-program verification; review findings and use targeted suppressions where needed. Machine translation and layout/overflow checks are out of scope.
 
+The canonical ID boundary connects three rules: L1 (`RawIdDisplay`), L3
+(`IdInTranslation`), and L6 (`LocalizedDataLeak`).
+
+```mermaid
+flowchart LR
+    ID["Canonical domain ID"] --> LOC["Configured localizer"]
+    LOC --> LABEL["Localized display text"]
+    LABEL --> UI["Display sink"]
+    ID --> DATA["Data sink"]
+    ID -. "L1: RawIdDisplay" .-> UI
+    LABEL -. "L6: LocalizedDataLeak" .-> DATA
+    VALUES["Configured domain values"] --> RESOURCE["Translated resource"]
+    RESOURCE -. "L3: IdInTranslation" .-> FINDING["Canonical value found in translation"]
+```
+
 ## MCP and agent guidance
 
 Install the stdio adapter with `npm install @budaknyenyel/i18n-mcp`. It exposes `i18n_lint` and `i18n_doctor`, delegates to the bundled CLI jar, and requires Node.js 24 or newer and Java. Set `I18N_LINT_JAR` to use a different CLI jar. Linting runs the analyzed project's Gradle wrapper and build scripts; only lint trusted projects. See [SKILL.md](SKILL.md) for CLI/MCP workflows. Plain CI does not require an agent or MCP.
