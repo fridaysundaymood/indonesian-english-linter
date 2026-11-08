@@ -106,7 +106,7 @@ internal fun findWrapper(root: File, name: String): File? =
 
 internal fun resolveBaseline(root: File, name: String, action: String): File {
     val base = root.canonicalFile.toPath()
-    val supplied = File(name).let { if (it.isAbsolute) it else File(root, name) }
+    val supplied = File(name).let { if (it.isAbsolute) it else File(base.toFile(), name) }
     val normalized = supplied.toPath().toAbsolutePath().normalize()
     if (!normalized.startsWith(base) || normalized == base) throw Usage("Baseline must be inside the project")
     if (!normalized.fileName.toString().endsWith(".xml", ignoreCase = true)) throw Usage("Baseline must be an XML file")
