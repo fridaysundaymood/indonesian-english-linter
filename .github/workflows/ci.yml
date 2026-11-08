@@ -5,6 +5,11 @@ on:
   pull_request:
 
 jobs:
+  fork-notice:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Sibling-dependent checks are skipped for fork pull requests because deploy keys are unavailable."
   build:
     strategy:
       fail-fast: false
@@ -62,6 +67,7 @@ jobs:
             .android-kit/runs/
 
   shared-fixture:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,7 +77,7 @@ jobs:
         with:
           repository: fridaysundaymood/kit-fixture-app
           path: kit-fixture-app
-          token: ${{ secrets.KIT_REPOS_TOKEN || github.token }}
+          ssh-key: ${{ secrets.DEPLOY_KEY_KIT_FIXTURE_APP }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -98,6 +104,7 @@ jobs:
           path: kit-fixture-app/app/build/reports/
 
   mcp:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -107,7 +114,7 @@ jobs:
         with:
           repository: fridaysundaymood/android-kit
           path: android-kit
-          token: ${{ secrets.KIT_REPOS_TOKEN || github.token }}
+          ssh-key: ${{ secrets.DEPLOY_KEY_ANDROID_KIT }}
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
