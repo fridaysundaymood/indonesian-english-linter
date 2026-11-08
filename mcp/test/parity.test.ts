@@ -15,6 +15,7 @@ const transport = new StdioClientTransport({ command: process.execPath, args: [s
 function direct(operation: 'lint' | 'doctor', args: string[]) {
   const child = spawnSync(process.env.JAVA ?? 'java', ['-jar', jar, operation, '--json', ...args], { encoding: 'utf8' });
   if (child.error) throw child.error;
+  if (!child.stdout.trim()) throw new Error(`CLI produced no JSON (exit ${child.status}): ${child.stderr}`);
   const result: unknown = JSON.parse(child.stdout);
   expect(validateResult(result)).toBe(true);
   if (!validateResult(result)) throw new Error('Invalid CLI envelope');
