@@ -207,7 +207,7 @@ class FlowDetectorTest {
         val sourcedConfig = source("i18n-lint.yaml", """
             domains:
               Status:
-                values_from: Choices.kt:statuses
+                values_from: src/Choices.kt:statuses
                 localizer: localized
             ui_sinks: [Text]
         """.trimIndent())

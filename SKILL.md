@@ -4,6 +4,8 @@ description: Run Android localization boundary checks and interpret findings.
 ---
 
 # Localization display lint
+Linting a Gradle project runs its wrapper and build scripts. Only run it on a trusted project.
+
 
 1. Check prerequisites with `java -jar cli/build/libs/i18n-lint.jar doctor --json`, or the MCP tool `i18n_doctor`.
 2. Run `java -jar cli/build/libs/i18n-lint.jar lint --path <android-project> --json`, or MCP `i18n_lint` with the equivalent project path. Select an explicit configuration when both configuration files exist.

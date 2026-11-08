@@ -16,7 +16,7 @@ class ResourceDetector : Detector(), Detector.XmlScanner {
         val folder = context.file.parentFile.name
         val key = element.tagName + "/" + element.getAttribute("name")
         resources.getOrPut(folder) { linkedMapOf() }[key] = Resource(context, element)
-        val config = configuration ?: Configuration.load(context.project.dir).also { configuration = it }
+        val config = configuration ?: Configuration.load(context).also { configuration = it }
         if (folder == "values" || folder !in config.locales) return
         val values = config.domains.values.flatMap { it.values }.filter { it.isNotBlank() }
         val matched = values.firstOrNull { Regex("(?<![\\p{L}\\p{N}_])" + Regex.escape(it) + "(?![\\p{L}\\p{N}_])").containsMatchIn(element.textContent) }
@@ -24,7 +24,7 @@ class ResourceDetector : Detector(), Detector.XmlScanner {
     }
 
     override fun afterCheckRootProject(context: Context) {
-        val config = configuration ?: Configuration.load(context.project.dir)
+        val config = configuration ?: Configuration.load(context)
         for (locale in config.locales.filter { it != "values" }) {
             val translated = resources[locale].orEmpty()
             for ((key, base) in resources["values"].orEmpty()) {

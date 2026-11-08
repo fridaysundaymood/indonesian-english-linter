@@ -59,7 +59,7 @@ The envelope also allows `classification` of `app`, `test`, `environment` or `co
 
 - Support Windows, macOS and Linux. Document shell quoting and path separators on Windows, executable permissions on macOS/Linux, and Android SDK installation and environment setup on each OS.
 - Declare and pin the JDK, Android SDK tools, Gradle, Android Gradle Plugin (AGP), Kotlin and Android Lint dependencies in builds and release documentation. `i18n-lint doctor` reports missing or incompatible prerequisites and concrete fixes, including SDK, Java, Gradle and lint compatibility.
-- Compatibility has been verified with AGP 9.0 and 9.5 and their corresponding Android Lint 32.x APIs, including the synthetic shared fixture on AGP 9.5. Revisit the matrix when upstream lint APIs change.
+- CI targets AGP 9.0 and 9.5 and their corresponding Android Lint 32.x APIs, including the synthetic shared fixture on AGP 9.5. No compatibility combination is yet claimed as verified. Revisit the matrix when upstream lint APIs change.
 - Version releases using semver and maintain a CHANGELOG, including rule and compatibility changes. CI runs unit tests on all three OSes and integration tests where feasible, including the compatibility matrix and baseline/SARIF/IDE-facing lint integration.
 - Emit structured logs to stderr so JSON stdout remains machine-readable. Make interrupted runs recoverable and reruns idempotent: use distinct run directories, write reports atomically, and never mutate a baseline unless explicitly requested.
 - Plan `SECURITY.md` and `CONTRIBUTING.md` for M1. Collect no telemetry.

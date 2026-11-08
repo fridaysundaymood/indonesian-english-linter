@@ -10,6 +10,9 @@ import org.yaml.snakeyaml.LoaderOptions
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.nio.file.LinkOption
+import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.time.Instant
 import java.util.Properties
 import java.util.UUID
@@ -98,6 +101,62 @@ internal fun findAndroidSdk(root: File, environment: Map<String, String>): File?
         .map { File(it).let { path -> if (path.isAbsolute) path else File(root, it) } }
         .firstOrNull { it.isDirectory }
 }
+internal fun findWrapper(root: File, name: String): File? =
+    File(root, name).takeIf { it.isFile && it.canonicalFile.toPath().startsWith(root.canonicalFile.toPath()) }
+
+internal fun resolveBaseline(root: File, name: String, action: String): File {
+    val base = root.canonicalFile.toPath()
+    val supplied = File(name).let { if (it.isAbsolute) it else File(root, name) }
+    val normalized = supplied.toPath().toAbsolutePath().normalize()
+    if (!normalized.startsWith(base) || normalized == base) throw Usage("Baseline must be inside the project")
+    if (!normalized.fileName.toString().endsWith(".xml", ignoreCase = true)) throw Usage("Baseline must be an XML file")
+    var component = base
+    for (part in base.relativize(normalized)) {
+        component = component.resolve(part)
+        if (Files.isSymbolicLink(component)) throw Usage("Baseline path must not contain symbolic links")
+    }
+    val target = normalized.toFile()
+    if (action == "--baseline-create") {
+        if (Files.exists(supplied.toPath(), LinkOption.NOFOLLOW_LINKS)) throw Usage("Baseline already exists")
+    } else {
+        if (!target.isFile) throw Usage("Baseline does not exist")
+        validateBaseline(target)
+    }
+    return supplied.absoluteFile.normalize()
+}
+
+internal fun baselineIdentity(file: File): BasicFileAttributes =
+    Files.readAttributes(file.toPath(), BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+
+internal fun validateBaseline(file: File) {
+    val factory = DocumentBuilderFactory.newInstance()
+    factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+    factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
+    factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "")
+    if (factory.newDocumentBuilder().parse(file).documentElement.tagName != "issues") {
+        throw Usage("Baseline XML root must be issues")
+    }
+}
+
+internal fun writeBaseline(root: File, target: File, generated: File, action: String, identity: BasicFileAttributes?) {
+    validateBaseline(generated)
+    resolveBaseline(root, target.path, action)
+    if (action == "--baseline-create") {
+        Files.createDirectories(target.parentFile.toPath())
+        resolveBaseline(root, target.path, action)
+    }
+    if (action == "--baseline-create") {
+        Files.write(target.toPath(), Files.readAllBytes(generated.toPath()), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+    } else {
+        val current = baselineIdentity(target)
+        if (identity == null || identity.fileKey() != current.fileKey() ||
+            identity.size() != current.size() || identity.lastModifiedTime() != current.lastModifiedTime()) {
+            throw Usage("Baseline changed during analysis")
+        }
+        atomicWrite(target, generated.readText())
+    }
+}
+
 
 private fun lint(options: Map<String, List<String>>, runId: String): Result {
     val cwd = File(".").canonicalFile
@@ -117,10 +176,9 @@ private fun lint(options: Map<String, List<String>>, runId: String): Result {
     if (reports.any { it !in setOf("markdown", "sarif") }) throw Usage("--report must be markdown or sarif")
     val baselineOptions = listOf("--baseline", "--baseline-create", "--baseline-update").filter { it in options }
     if (baselineOptions.size > 1) throw Usage("Choose only one baseline action")
-    val baseline = baselineOptions.singleOrNull()?.let { File(options.getValue(it).single()).canonicalFile }
-    if (baselineOptions.singleOrNull() == "--baseline" && baseline?.isFile != true) throw Usage("Baseline does not exist")
-    if (baselineOptions.singleOrNull() == "--baseline-create" && baseline?.exists() == true) throw Usage("Baseline already exists")
-    if (baselineOptions.singleOrNull() == "--baseline-update" && baseline?.isFile != true) throw Usage("Baseline to update does not exist")
+    val baselineAction = baselineOptions.singleOrNull()
+    val baseline = baselineAction?.let { resolveBaseline(root, options.getValue(it).single(), it) }
+    val baselineIdentity = if (baselineAction == "--baseline-update") baselineIdentity(baseline!!) else null
     val sdk = findAndroidSdk(root, System.getenv())
     if (sdk == null) return Result("blocked", "Android SDK unavailable; set ANDROID_SDK_ROOT, ANDROID_HOME, or sdk.dir in local.properties.", "environment")
     if (paths.any { !File(it, "AndroidManifest.xml").isFile && !File(it, "src/main/AndroidManifest.xml").isFile && !File(it, "settings.gradle").isFile && !File(it, "settings.gradle.kts").isFile })
@@ -129,7 +187,7 @@ private fun lint(options: Map<String, List<String>>, runId: String): Result {
     val dir = File(root, relativeDir).also { it.mkdirs() }
     val xml = File(dir, "lint.xml")
     val sarif = File(dir, "lint.sarif")
-    val baselineAction = baselineOptions.singleOrNull()
+    
     val baselineInput = if (baselineAction == "--baseline") baseline else if (baseline != null) File(dir, "new-baseline.xml") else null
     val rulesStream = object {}.javaClass.getResourceAsStream("/indonesian-english-lint-checks.jar")
         ?: return Result("unsupported", "Custom lint rules jar is unavailable; run the packaged CLI distribution.", "environment")
@@ -142,7 +200,7 @@ private fun lint(options: Map<String, List<String>>, runId: String): Result {
         if (paths.size != 1) return Result("unsupported", "Gradle analysis accepts one project directory per run.", "environment")
         val windows = System.getProperty("os.name").startsWith("Windows")
         val wrapperName = if (windows) "gradlew.bat" else "gradlew"
-        val wrapper = generateSequence(root) { it.parentFile }.map { File(it, wrapperName) }.firstOrNull { it.isFile }
+        val wrapper = findWrapper(root, wrapperName)
         val executable = wrapper?.absolutePath ?: if (commandExists(if (windows) "gradle.bat" else "gradle")) {
             if (windows) "gradle.bat" else "gradle"
         } else return Result("blocked", "Gradle is unavailable; install Gradle or provide a Gradle wrapper.", "environment")
@@ -192,7 +250,7 @@ private fun lint(options: Map<String, List<String>>, runId: String): Result {
     process.inputStream.bufferedReader().useLines { lines -> lines.forEach { log("info", it) } }
     val code = process.waitFor()
     if (baselineAction != null && baselineAction != "--baseline" && baselineInput?.isFile == true && (code == 0 || code == 1)) {
-        atomicWrite(baseline!!, baselineInput.readText())
+        writeBaseline(root, baseline!!, baselineInput, baselineAction, baselineIdentity)
     }
     if (baselineAction != null && baselineAction != "--baseline" && baselineInput?.isFile != true) return Result("unsupported", "Android Lint did not create the requested baseline; inspect stderr.", "environment")
     if (!xml.isFile) return Result("unsupported", "Android Lint did not produce a report (exit $code); check SDK, project metadata, and lint compatibility.", "environment")

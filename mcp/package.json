@@ -1,17 +1,23 @@
 {
-  "name": "@android-kit/i18n-mcp",
-  "version": "1.0.0",
-  "private": true,
+  "name": "@budaknyenyel/i18n-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for the Indonesian-English localization linter",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/fridaysundaymood/indonesian-english-linter.git", "directory": "mcp" },
+  "homepage": "https://github.com/fridaysundaymood/indonesian-english-linter#readme",
+  "bugs": { "url": "https://github.com/fridaysundaymood/indonesian-english-linter/issues" },
   "type": "module",
   "bin": { "i18n-mcp": "./dist/bin.js" },
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "files": ["dist"],
+  "files": ["dist", "README.md", "LICENSE", "CHANGELOG.md"],
+  "publishConfig": { "access": "public" },
   "scripts": {
     "build": "tsc -p tsconfig.json && node -e \"require('node:fs').copyFileSync('../schema/i18n.v1.json', 'dist/i18n.v1.json')\"",
-    "test": "npm run build && vitest run"
+    "test": "npm run build && vitest run",
+    "prepublishOnly": "npm run build && node -e \"const fs=require('node:fs'); for(const f of ['dist/bin.js','dist/index.js','dist/i18n.v1.json','dist/i18n-lint.jar','README.md','LICENSE','CHANGELOG.md']) if(!fs.existsSync(f)) throw new Error('Missing publish artifact: '+f); for(const spec of Object.values(require('./package.json').dependencies)) if(spec.startsWith('file:')) throw new Error('Local dependency in publish package');\""
   },
   "dependencies": {
-    "@android-kit/schema": "file:../../android-kit/packages/kit-schema",
+    "@budaknyenyel/kit-schema": "file:../../android-kit/packages/kit-schema",
     "@modelcontextprotocol/sdk": "^1.25.0",
     "zod": "^3.25.0"
   },

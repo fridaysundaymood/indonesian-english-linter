@@ -9,6 +9,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.assertFalse
+import kotlin.test.assertFails
+import kotlin.test.assertNotNull
 
 class ProjectPathsTest {
     @TempDir lateinit var directory: Path
@@ -48,5 +50,59 @@ class ProjectPathsTest {
 
         assertFalse(findingEvidence(finding.copy(message = "Unstructured message")).containsKey("domain"))
         assertFalse(findingEvidence(finding.copy(id = "IdInTranslation")).containsKey("domain"))
+    }
+    @Test fun `baselines stay in project and contain issues XML`() {
+        val project = Files.createDirectory(directory.resolve("baseline-project"))
+        val outside = directory.resolve("outside.xml")
+        outside.writeText("<issues/>")
+        assertFails { resolveBaseline(project.toFile(), outside.toString(), "--baseline") }
+        assertFails { resolveBaseline(project.toFile(), "../escape.xml", "--baseline-create") }
+        assertFails { resolveBaseline(project.toFile(), "baseline.txt", "--baseline-create") }
+        val baseline = project.resolve("baseline.xml")
+        baseline.writeText("<other/>")
+        assertFails { resolveBaseline(project.toFile(), "baseline.xml", "--baseline") }
+        baseline.writeText("<issues/>")
+        assertNotNull(resolveBaseline(project.toFile(), "baseline.xml", "--baseline"))
+        val generated = project.resolve("generated.xml")
+        generated.writeText("<other/>")
+        assertFails { writeBaseline(project.toFile(), baseline.toFile(), generated.toFile(), "--baseline-update", baselineIdentity(baseline.toFile())) }
+        assertEquals("<issues/>", Files.readString(baseline))
+    }
+
+    @Test fun `baseline paths reject symbolic link components`() {
+        val project = Files.createDirectory(directory.resolve("symlink-project"))
+        val real = Files.createDirectory(project.resolve("real"))
+        val baseline = real.resolve("baseline.xml")
+        baseline.writeText("<issues/>")
+        val link = project.resolve("link")
+        val fileLink = project.resolve("linked.xml")
+        org.junit.jupiter.api.Assumptions.assumeTrue(runCatching {
+            Files.createSymbolicLink(link, real)
+            Files.createSymbolicLink(fileLink, baseline)
+        }.isSuccess, "Symbolic links unavailable")
+        assertFails { resolveBaseline(project.toFile(), "link/baseline.xml", "--baseline") }
+        assertFails { resolveBaseline(project.toFile(), "link/new.xml", "--baseline-create") }
+        assertFails { resolveBaseline(project.toFile(), "linked.xml", "--baseline-update") }
+    }
+
+    @Test fun `baseline create and update reject intervening changes`() {
+        val project = Files.createDirectory(directory.resolve("race-project"))
+        val generated = project.resolve("generated.xml")
+        generated.writeText("<issues/>")
+        val baseline = resolveBaseline(project.toFile(), "baseline.xml", "--baseline-create")
+        baseline.writeText("<issues client=\"other\"/>")
+        assertFails { writeBaseline(project.toFile(), baseline, generated.toFile(), "--baseline-create", null) }
+        val identity = baselineIdentity(baseline)
+        baseline.writeText("<issues client=\"changed\"/>")
+        assertFails { writeBaseline(project.toFile(), baseline, generated.toFile(), "--baseline-update", identity) }
+        assertEquals("<issues client=\"changed\"/>", baseline.readText())
+    }
+
+    @Test fun `wrapper discovery does not search project ancestors`() {
+        val project = Files.createDirectory(directory.resolve("wrapper-project"))
+        directory.resolve("gradlew").writeText("parent")
+        assertNull(findWrapper(project.toFile(), "gradlew"))
+        project.resolve("gradlew").writeText("project")
+        assertEquals(project.resolve("gradlew").toFile(), findWrapper(project.toFile(), "gradlew"))
     }
 }

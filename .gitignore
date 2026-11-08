@@ -8,3 +8,10 @@ local.properties
 node_modules/
 dist/
 .android-kit/
+.vscode/
+*.jks
+*.keystore
+*.pem
+*.p12
+.env*
+build/

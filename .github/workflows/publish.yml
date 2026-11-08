@@ -1,0 +1,53 @@
+name: Publish npm package
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: linter
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: fridaysundaymood/android-kit
+          path: android-kit
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+      - uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+      - name: Build CLI
+        working-directory: linter
+        run: bash ./gradlew --no-daemon :cli:jar
+      - name: Build shared schema
+        working-directory: android-kit
+        run: npm ci && npm run build --workspace packages/kit-schema
+      - name: Build MCP package
+        working-directory: linter/mcp
+        run: npm ci && npm run build
+      - name: Prepare package
+        working-directory: linter
+        run: node scripts/prepare-publish.mjs "$RUNNER_TEMP/i18n-mcp" "${GITHUB_REF_NAME}"
+      - name: Publish
+        working-directory: ${{ runner.temp }}/i18n-mcp
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public

@@ -1,10 +1,10 @@
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { resolve } from 'node:path';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
-import { checkSchemaMajor, createResult, exitCodeFor, newRunId, validateResult, type Result } from '@android-kit/schema';
+import { checkSchemaMajor, createResult, exitCodeFor, newRunId, validateResult, type Result } from '@budaknyenyel/kit-schema';
 import { z } from 'zod/v4';
 
 checkSchemaMajor(1);
@@ -16,21 +16,40 @@ export const configSectionSchema: Record<string, unknown> = JSON.parse(
 );
 
 const lintSchema = z.object({
-  projectRoot: z.string().optional().describe('Working directory for the CLI'),
   config: z.string().optional().describe('Configuration file'),
   paths: z.array(z.string()).optional().describe('Project, source or resource paths'),
-  rules: z.array(z.string()).optional().describe('Selected lint issue IDs'),
+  rules: z.array(z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/)).optional().describe('Selected lint issue IDs'),
   baseline: z.string().optional(),
   baseline_create: z.string().optional(),
   baseline_update: z.string().optional(),
   reports: z.array(z.enum(['markdown', 'sarif'])).optional(),
-});
-const doctorSchema = z.object({ projectRoot: z.string().optional().describe('Working directory for the CLI') });
+}).strict();
+const doctorSchema = z.object({}).strict();
 type LintOptions = {
   projectRoot?: string;
   config?: string; paths?: string[]; rules?: string[]; baseline?: string;
   baseline_create?: string; baseline_update?: string; reports?: ('markdown' | 'sarif')[];
 };
+
+function containedPath(root: string, path: string): void {
+  if (!path || path.startsWith('-')) throw new Error('Invalid project path');
+  const target = resolve(root, path);
+  const inside = (candidate: string) => {
+    const rel = relative(root, candidate);
+    return !isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`);
+  };
+  if (!inside(target)) throw new Error('Path is outside the project root');
+  let existing = target;
+  for (;;) {
+    try { lstatSync(existing); break; } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      const parent = dirname(existing);
+      if (parent === existing) throw new Error('Path has no existing ancestor');
+      existing = parent;
+    }
+  }
+  if (!inside(realpathSync(existing))) throw new Error('Path resolves outside the project root');
+}
 
 export function cliArgs(operation: 'lint' | 'doctor', options: LintOptions = {}): string[] {
   const args = [operation, '--json'];
@@ -47,10 +66,14 @@ export function cliArgs(operation: 'lint' | 'doctor', options: LintOptions = {})
 
 export async function runCli(operation: 'lint' | 'doctor', options: LintOptions = {}): Promise<Result> {
   const startedAt = new Date();
-  const jar = process.env.I18N_LINT_JAR ?? fileURLToPath(new URL('../../cli/build/libs/i18n-lint.jar', import.meta.url));
+  const jar = process.env.I18N_LINT_JAR ?? fileURLToPath(new URL('./i18n-lint.jar', import.meta.url));
   try {
+    const root = realpathSync(options.projectRoot ?? process.cwd());
+    for (const path of [options.config, ...(options.paths ?? []), options.baseline, options.baseline_create, options.baseline_update]) {
+      if (path !== undefined) containedPath(root, path);
+    }
     const { promise, resolve: accept, reject } = Promise.withResolvers<{stdout: string; stderr: string; code: number | null}>();
-    const child = spawn(process.env.JAVA ?? 'java', ['-jar', resolve(jar), ...cliArgs(operation, options)], { windowsHide: true, cwd: options.projectRoot });
+    const child = spawn(process.env.JAVA ?? 'java', ['-jar', resolve(jar), ...cliArgs(operation, options)], { windowsHide: true, cwd: root });
     let stdout = '', stderr = '';
     child.stdout.setEncoding('utf8').on('data', (chunk: string) => { stdout += chunk; });
     child.stderr.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
@@ -79,19 +102,19 @@ export function toolDefinitions(options: { projectRoot?: string } = {}) {
       name: 'i18n_lint',
       description: 'Run localization lint checks',
       inputSchema: z.toJSONSchema(lintSchema),
-      handler: (input: unknown) => runCli('lint', { ...options, ...lintSchema.parse(input) }),
+      handler: (input: unknown) => runCli('lint', { ...lintSchema.parse(input), ...options }),
     },
     {
       name: 'i18n_doctor',
       description: 'Check localization lint prerequisites',
       inputSchema: z.toJSONSchema(doctorSchema),
-      handler: (input: unknown) => doctor({ ...options, ...doctorSchema.parse(input) }),
+      handler: (input: unknown) => doctor({ ...doctorSchema.parse(input), ...options }),
     },
   ];
 }
 
 export function createServer(): Server {
-  const server = new Server({ name: 'i18n-lint', version: '1.0.0' }, { capabilities: { tools: {} } });
+  const server = new Server({ name: 'i18n-lint', version: '0.1.0' }, { capabilities: { tools: {} } });
   const tools = toolDefinitions();
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),

@@ -8,7 +8,7 @@ Install JDK 21 and set `JAVA_HOME`. Install the Android SDK and set `ANDROID_HOM
 
 ## Gradle integration
 
-Build and publish locally with `./gradlew publishToMavenLocal` (use `gradlew.bat` on Windows). In the consuming project's plugin management and dependency repositories include `mavenLocal()`, `google()` and `mavenCentral()`. Apply `id("dev.androidkit.i18n-lint") version "0.1.0-SNAPSHOT"` to an Android application, library, test or dynamic-feature module. The plugin adds the same-version `dev.androidkit.i18n:lint-rules` artifact to `lintChecks`; invoke the app's normal lint task. Configure severity, baseline, SARIF and suppressions through Android Lint. This repository does not publish an external release automatically.
+Build and publish locally with `./gradlew publishToMavenLocal` (use `gradlew.bat` on Windows). In the consuming project's plugin management and dependency repositories include `mavenLocal()`, `google()` and `mavenCentral()`. Apply `id("dev.androidkit.i18n-lint") version "0.1.0-SNAPSHOT"` to an Android application, library, test or dynamic-feature module. The plugin adds the same-version `dev.androidkit.i18n:lint-rules` artifact to `lintChecks`; invoke the app's normal lint task. Configure severity, baseline, SARIF and suppressions through Android Lint. Maven artifacts are not published externally; the coordinates are for local development only.
 
 ## CLI
 
@@ -57,7 +57,13 @@ These checks are static analysis, not whole-program verification; review finding
 
 ## MCP and agent guidance
 
-The optional stdio adapter is in `mcp/` and exposes `i18n_lint` and `i18n_doctor`, delegating to the CLI. It currently requires Node.js 24 or newer, the `android-kit` repository as a sibling and its `packages/kit-schema` package built before installing the adapter dependencies. See [SKILL.md](SKILL.md) for CLI/MCP workflows. Plain CI does not require an agent or MCP.
+Install the stdio adapter with `npm install @budaknyenyel/i18n-mcp`. It exposes `i18n_lint` and `i18n_doctor`, delegates to the bundled CLI jar, and requires Node.js 24 or newer and Java. Set `I18N_LINT_JAR` to use a different CLI jar. Linting runs the analyzed project's Gradle wrapper and build scripts; only lint trusted projects. See [SKILL.md](SKILL.md) for CLI/MCP workflows. Plain CI does not require an agent or MCP.
+
+Suggested `AGENTS.md` snippet:
+
+```md
+Run the localization lint CLI or `i18n_lint` before claiming a localization scan passed. Report each issue ID and location. Only lint trusted projects: linting executes their Gradle build scripts.
+```
 
 ## Contributing and security
 

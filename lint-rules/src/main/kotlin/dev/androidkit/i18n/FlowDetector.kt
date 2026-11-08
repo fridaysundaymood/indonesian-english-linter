@@ -24,7 +24,7 @@ class FlowDetector : Detector(), Detector.UastScanner {
 
     override fun getApplicableUastTypes(): List<Class<out UElement>> = listOf(UMethod::class.java, UVariable::class.java, UCallExpression::class.java, UBinaryExpression::class.java, UTryExpression::class.java)
     override fun createUastHandler(context: JavaContext): UElementHandler {
-        val config = Configuration.load(context.project.dir)
+        val config = Configuration.load(context)
         val localizers = config.domains.values.map { it.localizer }.toSet()
         fun matches(name: String, configured: Set<String>) = configured.any { it == name || it.substringAfterLast('.') == name }
         fun resourceLocalizer(call: UCallExpression): Boolean {

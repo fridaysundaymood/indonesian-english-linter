@@ -1,9 +1,11 @@
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { validateResult, exitCodeFor } from '@android-kit/schema';
+import { validateResult, exitCodeFor } from '@budaknyenyel/kit-schema';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cliArgs, toolDefinitions, configSection, configSectionSchema, supportedSchemaMajors } from '../dist/index.js';
 
@@ -40,16 +42,61 @@ describe('CLI and MCP parity', () => {
     expect(supportedSchemaMajors).toEqual([1]);
   });
 
-  it('passes projectRoot to both CLI operations', async () => {
-    const missing = resolve('nonexistent-i18n-project-root');
-    for (const tool of toolDefinitions({ projectRoot: missing })) {
-      expect((await tool.handler({})).status).toBe('error');
-      expect((await tool.handler({ projectRoot: missing })).status).toBe('error');
+  it('rejects request-level launch options and unknown fields', async () => {
+    for (const tool of toolDefinitions()) {
+      expect(() => tool.handler({ projectRoot: resolve('..') })).toThrow();
+      expect(() => tool.handler({ unexpected: true })).toThrow();
     }
   });
 
+  it('rejects paths outside the fixed project root, including symlinks', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'i18n-mcp-root-'));
+    const outside = mkdtempSync(join(tmpdir(), 'i18n-mcp-outside-'));
+    try {
+      symlinkSync(outside, join(root, 'link'), 'junction');
+      const lint = toolDefinitions({ projectRoot: root })[0];
+      for (const path of ['../outside', join(outside, 'file'), 'link/file', '-option']) {
+        const result = await lint.handler({ paths: [path] });
+        expect(result.status).toBe('error');
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('starts the stdio server through a symlinked bin', async ({ skip }) => {
+    const root = mkdtempSync(join(tmpdir(), 'i18n-mcp-bin-'));
+    try {
+      const link = join(root, 'i18n-mcp.js');
+      try {
+        symlinkSync(server, link, 'file');
+      } catch (error) {
+        if (['EPERM', 'ENOTSUP', 'ENOSYS'].includes((error as NodeJS.ErrnoException).code ?? '')) skip();
+        throw error;
+      }
+      const linkedClient = new Client({ name: 'symlink-test', version: '1.0.0' });
+      const linkedTransport = new StdioClientTransport({ command: process.execPath, args: [link] });
+      try {
+        await linkedClient.connect(linkedTransport);
+        expect((await linkedClient.listTools()).tools.map(tool => tool.name)).toEqual(['i18n_lint', 'i18n_doctor']);
+      } finally {
+        await linkedClient.close();
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('prints usage without starting the server', () => {
+    const child = spawnSync(process.execPath, [server, '--help'], { encoding: 'utf8', timeout: 5000 });
+    expect(child.status).toBe(0);
+    expect(child.stdout).toContain('Usage: i18n-mcp');
+    expect(child.stderr).toBe('');
+  });
+
   it('imports the package root without starting stdio', () => {
-    const child = spawnSync(process.execPath, ['--input-type=module', '-e', "import '@android-kit/i18n-mcp';"], {
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', "import '@budaknyenyel/i18n-mcp';"], {
       cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8', timeout: 5000,
     });
     expect(child.error).toBeUndefined();
