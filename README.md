@@ -21,6 +21,19 @@ java -jar cli/build/libs/i18n-lint.jar lint --path /path/to/android-project --js
 
 Use a quoted Windows path such as `--path "C:\\work\\my app"`. The CLI requires the SDK and project metadata; it reads `sdk.dir` from the project's `local.properties` when neither `ANDROID_HOME` nor `ANDROID_SDK_ROOT` is set. Individual source files are not supported inputs. `--config FILE` selects the configuration explicitly, `--path DIRECTORY` may be repeated, and `--rules` takes comma-separated issue IDs. `--report markdown` and `--report sarif` select artifacts (both are default); `--baseline FILE`, `--baseline-create FILE`, and `--baseline-update FILE` are mutually exclusive. Reports are stored beneath the analyzed project root in `.android-kit/runs/<run-id>/i18n/`; envelope artifact paths are relative to that root. JSON goes to stdout and diagnostics to stderr. Exit codes are 0 for pass, 1 for findings, and 2 for blocked, unsupported or error. Unsupported analysis must not be interpreted as a clean result.
 
+The CLI selects an Android Lint invocation based on the project metadata:
+
+```mermaid
+flowchart TD
+    A["CLI lint request"] --> B["Validate paths, configuration and SDK"]
+    B --> C{"Gradle project?"}
+    C -->|Yes| D["Run Gradle lint with custom rules"]
+    C -->|No| E["Run Android Lint with custom rules"]
+    D --> F["Read lint XML findings"]
+    E --> F
+    F --> G["Write requested reports and result envelope"]
+```
+
 ## Configuration
 
 Use either `i18n-lint.yaml` containing the section value below, or an `i18n` section in `android-kit.yaml`. If both exist, pass `--config` to the CLI or set `I18N_LINT_CONFIG` for Gradle; do not merge them.
