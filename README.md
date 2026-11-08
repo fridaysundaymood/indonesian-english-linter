@@ -68,19 +68,17 @@ All six default to warning. Suppress by issue ID using Android Lint's supported 
 
 These checks are static analysis, not whole-program verification; review findings and use targeted suppressions where needed. Machine translation and layout/overflow checks are out of scope.
 
-The canonical ID boundary connects three rules: L1 (`RawIdDisplay`), L3
-(`IdInTranslation`), and L6 (`LocalizedDataLeak`).
+Solid arrows are the correct paths; dotted arrows are what the rules flag. L1, L2 and L6 guard the canonical-ID boundary; L3 guards exception text.
 
 ```mermaid
 flowchart LR
-    ID["Canonical domain ID"] --> LOC["Configured localizer"]
-    LOC --> LABEL["Localized display text"]
-    LABEL --> UI["Display sink"]
-    ID --> DATA["Data sink"]
-    ID -. "L1: RawIdDisplay" .-> UI
-    LABEL -. "L6: LocalizedDataLeak" .-> DATA
-    VALUES["Configured domain values"] --> RESOURCE["Translated resource"]
-    RESOURCE -. "L3: IdInTranslation" .-> FINDING["Canonical value found in translation"]
+    ID["Canonical ID, e.g. Cash"] -- "OK" --> LOC["Configured localizer"]
+    LOC -- "OK" --> UI["UI text"]
+    ID -- "OK" --> DATA["Storage, sync, export"]
+    ID -. "L1 RawIdDisplay" .-> UI
+    LOC -. "L6 LocalizedDataLeak" .-> DATA
+    ERR["Exception message"] -. "L3 ExceptionToUi" .-> UI
+    ID -. "L2 IdInTranslation" .-> RES["values-in strings"]
 ```
 
 ## MCP and agent guidance
