@@ -10,6 +10,10 @@ import kotlin.test.assertTrue
 class PackagingTest {
     @Test fun `bundled lint checks are isolated from the CLI runtime`() {
         JarFile(System.getProperty("cliJar")).use { cli ->
+            assertTrue(cli.size() > 0)
+            assertTrue(java.io.File(System.getProperty("cliJar")).length() < 12_000_000)
+            val forbiddenRuntime = listOf("com/android/tools/lint/", "com/intellij/", "org/jetbrains/kotlin/cli/")
+            assertTrue(cli.entries().asSequence().none { entry -> forbiddenRuntime.any(entry.name::startsWith) })
             val bundled = assertNotNull(cli.getJarEntry("indonesian-english-lint-checks.jar"))
             JarInputStream(cli.getInputStream(bundled)).use { checks ->
                 assertEquals(

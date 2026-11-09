@@ -14,9 +14,7 @@ val lintChecks by configurations.creating {
 }
 
 dependencies {
-    implementation(project(":lint-rules"))
     add(lintChecks.name, project(":lint-rules"))
-    implementation("com.android.tools.lint:lint:32.5.0")
     implementation("org.yaml:snakeyaml:2.3")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("com.networknt:json-schema-validator:1.5.6")
@@ -41,6 +39,7 @@ tasks.test {
 
 tasks.jar {
     isZip64 = true
+    entryCompression = ZipEntryCompression.DEFLATED
     archiveFileName.set("i18n-lint.jar")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest { attributes["Main-Class"] = application.mainClass.get() }

@@ -18,6 +18,7 @@ dependencies {
 tasks.processResources { from(rootProject.file("schema/i18n.v1.json")) }
 
 tasks.jar {
+    entryCompression = ZipEntryCompression.DEFLATED
     manifest { attributes("Lint-Registry-v2" to "dev.androidkit.i18n.I18nIssueRegistry") }
     from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE

@@ -18,13 +18,14 @@ for (const section of ['dependencies', 'optionalDependencies', 'peerDependencies
     manifest[section][name] = `^${dependency.version}`;
   }
 }
-manifest.scripts.build = "tsc -p tsconfig.json && node -e \"require('node:fs').copyFileSync('schema/i18n.v1.json', 'dist/i18n.v1.json')\"";
+// The staged copy ships already-built output: no rebuild here, only a check that every shipped file exists.
+manifest.scripts = {
+  prepublishOnly: "node -e \"const fs=require('node:fs'); for (const f of ['dist/bin.js','dist/index.js','dist/i18n.v1.json','dist/i18n-lint.jar','README.md','LICENSE','CHANGELOG.md']) if (!fs.existsSync(f)) throw new Error('missing ' + f)\"",
+};
+delete manifest.devDependencies;
 const target = resolve(destination);
 await mkdir(target, { recursive: true });
 await cp(join(source, 'dist'), join(target, 'dist'), { recursive: true });
-await cp(join(source, 'src'), join(target, 'src'), { recursive: true });
-await cp(join(source, 'tsconfig.json'), join(target, 'tsconfig.json'));
-await cp(join(source, 'node_modules'), join(target, 'node_modules'), { recursive: true, dereference: true });
 await mkdir(join(target, 'schema'), { recursive: true });
 await cp(join(root, 'schema/i18n.v1.json'), join(target, 'schema/i18n.v1.json'));
 for (const file of ['README.md', 'LICENSE', 'CHANGELOG.md']) await cp(join(root, file), join(target, file));

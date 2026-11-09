@@ -10,3 +10,4 @@
 - Restrict raw identifier findings to declared domain provenance and expose the matched domain and provenance chain in CLI evidence.
 - Restrict baseline and configuration paths, validate Gradle configuration against the schema, and document that linting executes project Gradle scripts.
 - Prepare the MCP adapter for public npm distribution with its CLI jar bundled.
+- Reduce the CLI distribution by using the project's Gradle lint runtime; non-Gradle projects are unsupported.

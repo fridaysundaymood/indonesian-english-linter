@@ -82,7 +82,7 @@ private fun doctor(options: Map<String, List<String>>): Result {
         Triple("java", Runtime.version().feature() >= 17, "Install JDK 17 or newer and set JAVA_HOME."),
         Triple("android_sdk", sdk != null, "Install the Android SDK and set ANDROID_SDK_ROOT or sdk.dir in local.properties."),
         Triple("gradle", commandExists(if (System.getProperty("os.name").startsWith("Windows")) "gradle.bat" else "gradle") || File("gradlew").isFile || File("gradlew.bat").isFile, "Install Gradle or use the project's Gradle wrapper."),
-        Triple("lint", runCatching { Class.forName("com.android.tools.lint.Main") }.isSuccess, "Reinstall the CLI with Android Lint 32.5 dependencies.")
+        Triple("lint", object {}.javaClass.getResource("/indonesian-english-lint-checks.jar") != null, "Reinstall the CLI with its bundled lint checks.")
     )
     val evidence = checks.map { (name, ok, fix) -> buildJsonObject { put("check", name); put("status", if (ok) "pass" else "blocked"); if (!ok) put("fix", fix) } }
     val missing = checks.count { !it.second }
@@ -233,19 +233,12 @@ private fun lint(options: Map<String, List<String>>, runId: String): Result {
             addAll(listOf("--no-daemon", "-p", root.absolutePath, "-I", init.absolutePath, "lint"))
         }
     } else {
-        val java = File(System.getProperty("java.home"), "bin/${if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java"}")
-        val classpath = System.getProperty("java.class.path").split(File.pathSeparator).joinToString(File.pathSeparator) { File(it).absolutePath }
-        mutableListOf(java.path, "-cp", classpath, "com.android.tools.lint.Main", "--check", selected.sorted().joinToString(","), "--xml", xml.absolutePath, "--exitcode").apply {
-            if ("sarif" in reports) addAll(listOf("--sarif", sarif.absolutePath))
-            if (baselineInput != null) addAll(listOf("--baseline", baselineInput.absolutePath))
-            addAll(paths.map { it.absolutePath })
-        }
+        return Result("unsupported", "Lint analysis requires a Gradle project with Android project metadata.", "environment")
     }
     val builder = ProcessBuilder(command).directory(root).redirectErrorStream(true)
     builder.environment()["ANDROID_HOME"] = sdk.absolutePath
     builder.environment()["ANDROID_SDK_ROOT"] = sdk.absolutePath
     config?.let { builder.environment()["I18N_LINT_CONFIG"] = it.absolutePath }
-    if (!gradleProject) builder.environment()["LINT_JARS"] = rulesJar.absolutePath
     val process = builder.start()
     process.inputStream.bufferedReader().useLines { lines -> lines.forEach { log("info", it) } }
     val code = process.waitFor()
